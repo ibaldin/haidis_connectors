@@ -1,0 +1,16 @@
+[project]
+name = "shmem-destination"
+version = "1.0.0"
+description = "Python destination container for shared memory data transfer"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26.0",
+    "posix-ipc>=1.1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = []

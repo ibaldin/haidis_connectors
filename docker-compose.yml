@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  source:
+    build:
+      context: ./source
+      dockerfile: Dockerfile
+    container_name: haidis-source
+    ipc: host
+    env_file:
+      - ./shared/config.env
+    restart: unless-stopped
+
+  destination:
+    build:
+      context: ./destination
+      dockerfile: Dockerfile
+    container_name: haidis-destination
+    ipc: host
+    env_file:
+      - ./shared/config.env
+    depends_on:
+      - source
+    restart: unless-stopped
