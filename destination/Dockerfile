@@ -16,8 +16,8 @@ WORKDIR /app
 COPY pyproject.toml .
 COPY src/ src/
 
-# Install dependencies using uv
-RUN uv pip install --system numpy posix-ipc
+# Install project and dependencies from pyproject.toml
+RUN uv pip install --system .
 
 # Make the script executable
 RUN chmod +x src/main.py
