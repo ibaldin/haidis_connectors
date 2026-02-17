@@ -103,6 +103,20 @@ All IPC parameters are centralized in `shared/config.env`:
 - `ARRAY_SIZE`: Number of doubles to transfer
 - `SEM_NAME`: Name of semaphore for synchronization
 
+## Cleaning Up Stale IPC Objects
+
+When containers are killed or crash, POSIX shared memory and semaphores persist in the Docker VM's `/dev/shm` because of `ipc: host`. Stale semaphores with incorrect values cause deadlocks on subsequent runs (both containers initialize but no data flows).
+
+**Cleanup command** (must run from inside a container since macOS has no `/dev/shm`):
+```bash
+docker run --rm --ipc=host ubuntu:22.04 \
+  rm -f /dev/shm/sem.haidis_sem /dev/shm/sem.haidis_sem_ack /dev/shm/haidis_shmem
+```
+
+**Root cause:** `sem_open()` with `O_CREAT` reuses existing semaphore files without resetting their values. If the previous run left a semaphore in a non-initial state (e.g., `sem_ack` at 0 instead of 1), the writer blocks on `sem_wait(sem_ack_)` and the reader blocks on `sem.acquire()`, producing a deadlock.
+
+**Symptoms:** Both containers log successful initialization ("Shared memory initialized", "Semaphores opened") but no iteration messages appear. Verify by checking timestamps in `/dev/shm/` — stale semaphore files will have old timestamps.
+
 ## Code Organization
 
 ### C++ Source Container (source/)
