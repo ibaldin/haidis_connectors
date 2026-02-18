@@ -4,8 +4,8 @@ project(shmem_source VERSION 1.0.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Library: libshmem_writer
-add_library(shmem_writer
+# Library: libshmem_writer (shared)
+add_library(shmem_writer SHARED
     src/shmem_writer.cpp
 )
 target_include_directories(shmem_writer

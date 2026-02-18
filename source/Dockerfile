@@ -15,9 +15,11 @@ COPY CMakeLists.txt .
 COPY src/ src/
 COPY include/ include/
 
-# Build application
-RUN cmake -B build -DCMAKE_BUILD_TYPE=Release && \
-    cmake --build build
+# Build and install application
+RUN cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local && \
+    cmake --build build && \
+    cmake --install build && \
+    ldconfig
 
 # Run the application
-CMD ["./build/shmem_source"]
+CMD ["shmem_source"]
