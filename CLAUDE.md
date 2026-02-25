@@ -103,6 +103,71 @@ All IPC parameters are centralized in `shared/config.env`:
 - `ARRAY_SIZE`: Number of doubles to transfer
 - `SEM_NAME`: Name of semaphore for synchronization
 
+## Testing
+
+### Unit tests — C++ ShmemWriter (`source/src/test_shmem_writer.cpp`)
+
+Validates the six behaviors fixed/added in commit 6250271 (deadlock prevention, resource cleanup, input validation). Built alongside the main binary and run inside a Docker container so POSIX shmem is available:
+
+```bash
+DOCKER_API_VERSION=1.43 docker run --rm --ipc=host \
+  -v "$(pwd)/source":/app -w /app ubuntu:22.04 \
+  bash -c "cmake -B /tmp/build -DCMAKE_BUILD_TYPE=Release && \
+           cmake --build /tmp/build --target test_shmem_writer && \
+           /tmp/build/test_shmem_writer"
+```
+
+Expected output (all pass):
+```
+=== ShmemWriter unit tests ===
+[PASS] init: basic initialize() succeeds
+[PASS] init: succeeds with stale semaphores (sem_unlink at start)
+[PASS] init: sem_ack value reset to 1 (not stale 0)
+[PASS] write: fails when dims.size() < ndim
+[PASS] write: fails when product(dims) != data.size()
+[PASS] write: returns false for oversized data
+[PASS] write: sem_ack_ restored – second call returns without deadlock
+[PASS] write: write_data() succeeds for valid data
+[PASS] write: consumer received the data-ready signal
+=== Results: 9 passed, 0 failed ===
+```
+
+### Integration test — C++ source ↔ Python destination (`scripts/integration_test.sh`)
+
+Builds both containers, runs them for a configurable window, then validates successful handoffs end-to-end. Must be run from the repo root:
+
+```bash
+DOCKER_API_VERSION=1.43 ./scripts/integration_test.sh [RUN_SECONDS]
+# default: 20 seconds
+```
+
+The script checks:
+1. Both containers initialized shmem and semaphores
+2. Each side completed ≥ 5 iterations
+3. Destination received the correct array shape (e.g. `(1000000, 3)`)
+4. All reported Min/Max values fall within `[-1, 1]`
+5. Neither container logged any errors
+
+**Expected output (no errors):**
+```
+[PASS] source:    shmem + semaphores initialized
+[PASS] destination: shmem + semaphores opened
+[PASS] source:      >= 5 iterations written (NNNN)
+[PASS] destination: >= 5 iterations read (NNNN)
+[PASS] destination: array shape is (1000000, 3)
+[PASS] destination: all Min/Max values within [-1, 1]
+[PASS] source:      no error messages in log
+[PASS] destination: no error messages in log
+── Results: 8 passed, 0 failed ──
+```
+
+**If errors occur**, the failing check prints `[FAIL]` with details, e.g.:
+- `[FAIL] destination: >= 5 iterations read (0)` — Python side never received data; likely a deadlock from stale IPC objects. Run the cleanup command below, then retry.
+- `[FAIL] destination: array shape is (1000000, 3)` — shape mismatch between `ARRAY_SIZE` in `config.env` and what Python reports; check both sides agree on the layout.
+- `[FAIL] source: no error messages in log` — followed by the error text printed inline.
+
+The script always tears down containers via `trap EXIT`, so failed runs leave no orphaned containers.
+
 ## Cleaning Up Stale IPC Objects
 
 When containers are killed or crash, POSIX shared memory and semaphores persist in the Docker VM's `/dev/shm` because of `ipc: host`. Stale semaphores with incorrect values cause deadlocks on subsequent runs (both containers initialize but no data flows).

@@ -21,6 +21,12 @@ add_executable(shmem_source
 )
 target_link_libraries(shmem_source PRIVATE shmem_writer)
 
+# Test executable
+add_executable(test_shmem_writer
+    src/test_shmem_writer.cpp
+)
+target_link_libraries(test_shmem_writer PRIVATE shmem_writer)
+
 # Install targets
 install(TARGETS shmem_writer
     EXPORT shmem_writer-targets
