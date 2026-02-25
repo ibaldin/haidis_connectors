@@ -16,6 +16,11 @@ ShmemWriter::~ShmemWriter() {
 }
 
 bool ShmemWriter::initialize() {
+    // Unlink any existing semaphores to ensure clean state
+    // (Ignore errors - they may not exist)
+    sem_unlink(sem_name_.c_str());
+    sem_unlink(sem_ack_name_.c_str());
+
     // Create shared memory object
     fd_ = shm_open(shmem_name_.c_str(), O_CREAT | O_RDWR, 0666);
     if (fd_ == -1) {
@@ -27,6 +32,7 @@ bool ShmemWriter::initialize() {
     if (ftruncate(fd_, shmem_size_) == -1) {
         std::cerr << "Failed to set shared memory size: " << strerror(errno) << std::endl;
         close(fd_);
+        shm_unlink(shmem_name_.c_str());
         return false;
     }
 
@@ -35,6 +41,7 @@ bool ShmemWriter::initialize() {
     if (ptr_ == MAP_FAILED) {
         std::cerr << "Failed to map shared memory: " << strerror(errno) << std::endl;
         close(fd_);
+        shm_unlink(shmem_name_.c_str());
         return false;
     }
 
@@ -44,6 +51,7 @@ bool ShmemWriter::initialize() {
         std::cerr << "Failed to create semaphore: " << strerror(errno) << std::endl;
         munmap(ptr_, shmem_size_);
         close(fd_);
+        shm_unlink(shmem_name_.c_str());
         return false;
     }
 
@@ -55,6 +63,7 @@ bool ShmemWriter::initialize() {
         sem_unlink(sem_name_.c_str());
         munmap(ptr_, shmem_size_);
         close(fd_);
+        shm_unlink(shmem_name_.c_str());
         return false;
     }
 
@@ -70,6 +79,24 @@ bool ShmemWriter::write_data(const std::vector<double>& data, uint32_t ndim, con
         return false;
     }
 
+    // Validate dims vector size
+    if (dims.size() < ndim) {
+        std::cerr << "Invalid dims: dims.size() (" << dims.size()
+                  << ") must be >= ndim (" << ndim << ")" << std::endl;
+        return false;
+    }
+
+    // Validate that product of dimensions matches data size
+    size_t expected_elements = 1;
+    for (uint32_t i = 0; i < ndim; ++i) {
+        expected_elements *= dims[i];
+    }
+    if (expected_elements != data.size()) {
+        std::cerr << "Invalid dimensions: product of dims (" << expected_elements
+                  << ") != data.size() (" << data.size() << ")" << std::endl;
+        return false;
+    }
+
     // Wait until the reader has consumed the previous data
     if (sem_wait(sem_ack_) == -1) {
         if (errno == EINTR) return false;  // interrupted by signal
@@ -80,7 +107,10 @@ bool ShmemWriter::write_data(const std::vector<double>& data, uint32_t ndim, con
     size_t data_size = data.size() * sizeof(double);
     size_t header_size = sizeof(size_t) + sizeof(uint32_t) + ndim * sizeof(uint32_t);
     if (header_size + data_size > shmem_size_) {
-        std::cerr << "Data too large for shared memory" << std::endl;
+        std::cerr << "Data too large for shared memory (need " << (header_size + data_size)
+                  << " bytes, have " << shmem_size_ << " bytes)" << std::endl;
+        // Restore semaphore before returning
+        sem_post(sem_ack_);
         return false;
     }
 
@@ -104,6 +134,8 @@ bool ShmemWriter::write_data(const std::vector<double>& data, uint32_t ndim, con
     // Signal that new data is ready
     if (sem_post(sem_) == -1) {
         std::cerr << "Failed to post semaphore: " << strerror(errno) << std::endl;
+        // Restore ack semaphore to prevent deadlock
+        sem_post(sem_ack_);
         return false;
     }
 
