@@ -89,7 +89,7 @@ check "destination: shmem + semaphores opened" \
 
 # 5b. Iteration counts
 SRC_ITERS="$(echo "${SRC_LOG}" | grep -c '^Iteration' || true)"
-DST_ITERS="$(echo "${DST_LOG}" | grep -c '^Iteration' || true)"
+DST_ITERS="$(echo "${DST_LOG}" | grep -c 'Iteration' || true)"
 echo "   Source iterations:      ${SRC_ITERS}"
 echo "   Destination iterations: ${DST_ITERS}"
 

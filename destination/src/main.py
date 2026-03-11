@@ -6,6 +6,9 @@ import sys
 import time
 import mmap
 import struct
+import random
+import itertools
+import multiprocessing
 from posix_ipc import SharedMemory, Semaphore, ExistentialError
 import numpy as np
 
@@ -120,53 +123,63 @@ class ShmemReader:
             self.sem_ack = None
 
 
-def main():
-    """Main entry point."""
-    shmem_name = os.getenv("SHMEM_NAME", "/haidis_shmem")
-    shmem_size = int(os.getenv("SHMEM_SIZE", "10485760"))
-    sem_name = os.getenv("SEM_NAME", "/haidis_sem")
-    sem_ack_name = os.getenv("SEM_ACK_NAME", "/haidis_sem_ack")
-
-    print("Python Destination Container Starting...")
-    print("Configuration:")
-    print(f"  SHMEM_NAME: {shmem_name}")
-    print(f"  SHMEM_SIZE: {shmem_size}")
-    print(f"  SEM_NAME: {sem_name}")
-    print(f"  SEM_ACK_NAME: {sem_ack_name}")
-
+def reader_worker(reader_id: int, shmem_name: str, shmem_size: int,
+                  sem_name: str, sem_ack_name: str):
     reader = ShmemReader(shmem_name, shmem_size, sem_name, sem_ack_name)
-
     if not reader.initialize():
-        print("Failed to initialize shared memory reader", file=sys.stderr)
-        return 1
-
-    print("Waiting for data from C++ source...")
-    iteration = 0
-
+        print(f"[Reader {reader_id}] Failed to initialize", file=sys.stderr)
+        return
+    print(f"[Reader {reader_id}] Waiting for data...")
     try:
-        while True:
-            # Wait for signal that new data is available
+        for iteration in itertools.count():
             reader.wait_for_data()
-
-            # Read the data
             data = reader.read_data()
-
-            # Signal that the buffer is available for the next write
             reader.acknowledge_data()
-
             if data is not None and data.size > 0:
-                print(f"Iteration {iteration}: Read array {data.shape} from shared memory")
-                print(f"  Min: {data.min():.6f}, Max: {data.max():.6f}, Mean: {data.mean():.6f}")
+                print(f"[Reader {reader_id}] Iteration {iteration}: "
+                      f"Read array {data.shape} Min: {data.min():.6f}, "
+                      f"Max: {data.max():.6f}, Mean: {data.mean():.6f}")
             else:
-                print(f"Iteration {iteration}: No data available")
-
-            iteration += 1
-
+                print(f"[Reader {reader_id}] Iteration {iteration}: No data")
+            time.sleep(random.uniform(0, 0.1))   # random 0–100 ms wait
     except KeyboardInterrupt:
-        print("\nShutting down...")
+        pass
     finally:
         reader.cleanup()
 
+
+def main():
+    """Main entry point."""
+    shmem_name   = os.getenv("SHMEM_NAME",    "/haidis_shmem")
+    shmem_size   = int(os.getenv("SHMEM_SIZE", "10485760"))
+    sem_name     = os.getenv("SEM_NAME",      "/haidis_sem")
+    sem_ack_name = os.getenv("SEM_ACK_NAME",  "/haidis_sem_ack")
+    num_readers  = int(os.getenv("NUM_READERS", "1"))
+
+    print("Python Destination Container Starting...")
+    print(f"  SHMEM_NAME: {shmem_name}, SHMEM_SIZE: {shmem_size}")
+    print(f"  SEM_NAME: {sem_name}, SEM_ACK_NAME: {sem_ack_name}")
+    print(f"  NUM_READERS: {num_readers}")
+
+    worker_args = (shmem_name, shmem_size, sem_name, sem_ack_name)
+
+    if num_readers == 1:
+        reader_worker(0, *worker_args)
+    else:
+        procs = [
+            multiprocessing.Process(target=reader_worker, args=(i, *worker_args))
+            for i in range(num_readers)
+        ]
+        for p in procs:
+            p.start()
+        try:
+            for p in procs:
+                p.join()
+        except KeyboardInterrupt:
+            for p in procs:
+                p.terminate()
+            for p in procs:
+                p.join()
     return 0
 
 
