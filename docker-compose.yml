@@ -13,8 +13,8 @@ services:
 
   destination:
     build:
-      context: ./destination
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: destination/Dockerfile
     container_name: haidis-destination
     ipc: host
     env_file:

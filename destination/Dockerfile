@@ -9,8 +9,9 @@ RUN pip install --no-cache-dir uv
 
 WORKDIR /app
 
-COPY pyproject.toml .
-COPY src/ src/
+COPY destination/pyproject.toml .
+COPY destination/src/ src/
+COPY VERSION.txt .
 
 # Install package and its dependencies
 RUN uv pip install --system .
