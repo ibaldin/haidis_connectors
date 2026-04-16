@@ -70,7 +70,7 @@ static void test_write_dims_too_few() {
     w.initialize();
     std::vector<double>   data = {1.0, 2.0, 3.0, 4.0};
     std::vector<uint32_t> dims = {2};       // ndim=2 but only 1 dim value
-    CHECK("write: fails when dims.size() < ndim", !w.write_data(data, 2, dims));
+    CHECK("write: fails when dims.size() < ndim", !w.write_data(data, 2, dims, 0));
 }
 
 // -------------------------------------------------------------------------
@@ -81,7 +81,7 @@ static void test_write_dims_product_mismatch() {
     w.initialize();
     std::vector<double>   data = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};  // 6 elements
     std::vector<uint32_t> dims = {2, 4};    // product=8, mismatch
-    CHECK("write: fails when product(dims) != data.size()", !w.write_data(data, 2, dims));
+    CHECK("write: fails when product(dims) != data.size()", !w.write_data(data, 2, dims, 0));
 }
 
 // -------------------------------------------------------------------------
@@ -96,14 +96,14 @@ static void test_write_too_large_restores_sem_ack() {
     std::vector<double>   data(100, 1.0);   // 800 bytes >> 128
     std::vector<uint32_t> dims = {100};
 
-    bool first = w.write_data(data, 1, dims);
+    bool first = w.write_data(data, 1, dims, 0);
     CHECK("write: returns false for oversized data", !first);
 
     // If sem_ack_ was NOT restored, this second call would block forever.
     // Run it in a thread with a timeout to detect deadlock.
     std::atomic<bool> second_returned{false};
     std::thread t([&]() {
-        w.write_data(data, 1, dims);
+        w.write_data(data, 1, dims, 0);
         second_returned = true;
     });
     // Give it 2 seconds – far more than needed for a non-blocking path
@@ -135,7 +135,7 @@ static void test_write_roundtrip() {
 
     std::vector<double>   data = {1.0, 2.0, 3.0};
     std::vector<uint32_t> dims = {3};
-    bool write_ok = w.write_data(data, 1, dims);
+    bool write_ok = w.write_data(data, 1, dims, 42);
     consumer.join();
 
     CHECK("write: write_data() succeeds for valid data", write_ok);

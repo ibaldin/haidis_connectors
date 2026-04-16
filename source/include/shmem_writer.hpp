@@ -13,7 +13,7 @@ public:
     ~ShmemWriter();
 
     bool initialize();
-    bool write_data(const std::vector<double>& data, uint32_t ndim, const std::vector<uint32_t>& dims);
+    bool write_data(const std::vector<double>& data, uint32_t ndim, const std::vector<uint32_t>& dims, uint16_t data_id = 0);
     void cleanup();
 
 private:

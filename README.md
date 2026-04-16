@@ -34,6 +34,10 @@ docker-compose down
 
 ## Development
 
+### Versioning
+
+Version is specified in VERSION.txt
+
 ### C++ Source Container
 
 Built with CMake. The build produces two artifacts:
@@ -66,9 +70,22 @@ find_package(shmem_writer REQUIRED)
 target_link_libraries(my_app PRIVATE shmem_writer::shmem_writer)
 ```
 
-### Python Destination Container
+### Python Destination Container and Pypi
 
-Built with uv. See `destination/` directory for details.
+Built with uv, publish to Pypi (Note that shmem mechanism works only on Linux):
+```bash
+$ DOCKER_API_VERSION=1.43 docker run --rm -it --platform linux/amd64 python:3.11 bash
+# git clone https://github.com/ibaldin/haidis_connectors.git
+# cd haidis_connectors/
+# curl -LsSf https://astral.sh/uv/install.sh | sh
+# pip install build twine
+# uv build --project destination
+# uv run twine upload destination/dist/*
+```
+or build the containers:
+```bash
+$ docker compose build
+```
 
 ## Testing
 

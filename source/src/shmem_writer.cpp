@@ -73,7 +73,7 @@ bool ShmemWriter::initialize() {
     return true;
 }
 
-bool ShmemWriter::write_data(const std::vector<double>& data, uint32_t ndim, const std::vector<uint32_t>& dims) {
+bool ShmemWriter::write_data(const std::vector<double>& data, uint32_t ndim, const std::vector<uint32_t>& dims, uint16_t data_id) {
     if (!initialized_) {
         std::cerr << "Shared memory not initialized" << std::endl;
         return false;
@@ -105,7 +105,7 @@ bool ShmemWriter::write_data(const std::vector<double>& data, uint32_t ndim, con
     }
 
     size_t data_size = data.size() * sizeof(double);
-    size_t header_size = sizeof(size_t) + sizeof(uint32_t) + ndim * sizeof(uint32_t);
+    size_t header_size = sizeof(size_t) + sizeof(uint16_t) + sizeof(uint32_t) + ndim * sizeof(uint32_t);
     if (header_size + data_size > shmem_size_) {
         std::cerr << "Data too large for shared memory (need " << (header_size + data_size)
                   << " bytes, have " << shmem_size_ << " bytes)" << std::endl;
@@ -119,6 +119,10 @@ bool ShmemWriter::write_data(const std::vector<double>& data, uint32_t ndim, con
     // Write data_size (8 bytes)
     std::memcpy(dest, &data_size, sizeof(size_t));
     dest += sizeof(size_t);
+
+    // Write data_id (2 bytes)
+    std::memcpy(dest, &data_id, sizeof(uint16_t));
+    dest += sizeof(uint16_t);
 
     // Write ndim (4 bytes)
     std::memcpy(dest, &ndim, sizeof(uint32_t));

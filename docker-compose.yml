@@ -7,12 +7,14 @@ services:
     ipc: host
     env_file:
       - ./shared/config.env
+    environment:
+      - DATA_ID=${DATA_ID:-0}
     restart: unless-stopped
 
   destination:
     build:
-      context: ./destination
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: destination/Dockerfile
     container_name: haidis-destination
     ipc: host
     env_file:
