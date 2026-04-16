@@ -11,7 +11,7 @@ WORKDIR /app
 
 COPY destination/pyproject.toml .
 COPY destination/src/ src/
-COPY VERSION.txt .
+COPY VERSION.txt /VERSION.txt
 
 # Install package and its dependencies
 RUN uv pip install --system .
