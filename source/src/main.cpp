@@ -10,7 +10,7 @@ static void signal_handler(int /*signum*/) {
     g_running = 0;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
     // Register signal handlers for graceful shutdown
     std::signal(SIGTERM, signal_handler);
     std::signal(SIGINT, signal_handler);
@@ -32,6 +32,19 @@ int main() {
     env = std::getenv("SEM_ACK_NAME");
     const std::string sem_ack_name = env ? env : "/haidis_sem_ack";
 
+    // Optional data_id: --data-id N (argv) or DATA_ID env var; 0 means unused
+    uint16_t data_id = 0;
+    for (int i = 1; i + 1 < argc; ++i) {
+        if (std::string(argv[i]) == "--data-id") {
+            data_id = static_cast<uint16_t>(std::stoul(argv[i + 1]));
+            break;
+        }
+    }
+    if (data_id == 0) {
+        env = std::getenv("DATA_ID");
+        if (env) data_id = static_cast<uint16_t>(std::stoul(env));
+    }
+
     std::cout << "C++ Source Container Starting..." << std::endl;
     std::cout << "Configuration:" << std::endl;
     std::cout << "  SHMEM_NAME: " << shmem_name << std::endl;
@@ -39,6 +52,7 @@ int main() {
     std::cout << "  ARRAY_SIZE: " << array_size << std::endl;
     std::cout << "  SEM_NAME: " << sem_name << std::endl;
     std::cout << "  SEM_ACK_NAME: " << sem_ack_name << std::endl;
+    std::cout << "  DATA_ID: " << data_id << " (0 = unused)" << std::endl;
 
     ShmemWriter writer(shmem_name, shmem_size, sem_name, sem_ack_name);
 
@@ -64,9 +78,9 @@ int main() {
             data[i] = dist(rng);
         }
 
-        uint16_t data_id = static_cast<uint16_t>(iteration);
         if (writer.write_data(data, 2, dims, data_id)) {
-            std::cout << "Iteration " << iteration << ": Wrote (" << num_triples << ", " << ncols << ") doubles to shared memory (data_id=" << data_id << ")" << std::endl;
+            std::cout << "Iteration " << iteration << ": Wrote (" << num_triples << ", " << ncols << ") doubles to shared memory"
+                      << (data_id ? " (data_id=" + std::to_string(data_id) + ")" : "") << std::endl;
         } else {
             if (!g_running) break;
             std::cerr << "Failed to write data" << std::endl;

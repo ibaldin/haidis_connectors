@@ -11,8 +11,9 @@
 # install it in editable mode with:
 #   pip install -e destination/
 #
-# Usage:  ./scripts/integration_test.sh [RUN_SECONDS]
+# Usage:  ./scripts/integration_test.sh [RUN_SECONDS] [--data-id N]
 #   RUN_SECONDS  seconds to let the containers run (default: 20)
+#   --data-id N  fixed data_id the C++ source stamps on every write (default: 0 = unused)
 
 set -euo pipefail
 
@@ -22,6 +23,17 @@ cd "${REPO_ROOT}"
 
 # ── configuration ────────────────────────────────────────────────────────────
 RUN_SECONDS="${1:-20}"
+DATA_ID=0
+# parse optional --data-id flag from remaining args
+shift || true
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --data-id) DATA_ID="$2"; shift 2 ;;
+        *) echo "Unknown argument: $1" >&2; exit 1 ;;
+    esac
+done
+export DATA_ID
+
 MIN_ITERATIONS=5          # minimum successful iterations to consider the test passing
 DOCKER_API_VERSION="${DOCKER_API_VERSION:-1.43}"
 export DOCKER_API_VERSION
@@ -127,7 +139,15 @@ BAD_RANGE="$(echo "${DST_LOG}" | grep 'Min:' | awk '
     && pass "destination: all Min/Max values within [-1, 1]" \
     || fail "destination: out-of-range values detected: ${BAD_RANGE}"
 
-# 5e. No errors on either side
+# 5e. data_id propagation (only checked when --data-id N was given)
+if [[ "${DATA_ID}" != "0" ]]; then
+    check "source:      data_id=${DATA_ID} logged by writer" \
+        "$(echo "${SRC_LOG}" | grep -c "data_id=${DATA_ID}")"
+    check "destination: data_id=${DATA_ID} received by reader" \
+        "$(echo "${DST_LOG}" | grep -c "data_id=${DATA_ID}")"
+fi
+
+# 5g. No errors on either side
 SRC_ERRORS="$(echo "${SRC_LOG}"  | grep -i 'error\|failed\|fatal' || true)"
 DST_ERRORS="$(echo "${DST_LOG}"  | grep -i 'error\|failed\|fatal' || true)"
 [[ -z "${SRC_ERRORS}" ]] \

@@ -23,9 +23,14 @@ def reader_worker(reader_id: int, shmem_name: str, shmem_size: int,
             result = reader.read_data()
             reader.acknowledge_data()
             if result is not None:
-                data, data_id = result
+                if isinstance(result, tuple):
+                    data, data_id = result
+                    prefix = f"data_id={data_id} "
+                else:
+                    data = result
+                    prefix = ""
                 print(f"[Reader {reader_id}] Iteration {iteration}: "
-                      f"data_id={data_id} Read array {data.shape} Min: {data.min():.6f}, "
+                      f"{prefix}Read array {data.shape} Min: {data.min():.6f}, "
                       f"Max: {data.max():.6f}, Mean: {data.mean():.6f}")
             else:
                 print(f"[Reader {reader_id}] Iteration {iteration}: No data")

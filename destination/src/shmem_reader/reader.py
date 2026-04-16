@@ -66,8 +66,13 @@ class ShmemReader:
         if self.sem_ack is not None:
             self.sem_ack.release()
 
-    def read_data(self) -> tuple[np.ndarray, int] | None:
-        """Read data array from shared memory. Returns (array, data_id) or None."""
+    def read_data(self) -> np.ndarray | tuple[np.ndarray, int] | None:
+        """Read data array from shared memory.
+
+        Returns the array directly when data_id is 0 (default/unused),
+        or (array, data_id) when the writer set a non-zero data_id.
+        Returns None on error.
+        """
         if self.mapfile is None:
             print("Shared memory not initialized", file=sys.stderr)
             return None
@@ -86,7 +91,8 @@ class ShmemReader:
             num_doubles = data_size // 8
             data_bytes = self.mapfile.read(data_size)
             data = np.frombuffer(data_bytes, dtype=np.float64, count=num_doubles)
-            return data.reshape(dims), data_id
+            array = data.reshape(dims)
+            return array if data_id == 0 else (array, data_id)
         except Exception as e:
             print(f"Error reading data: {e}", file=sys.stderr)
             return None
