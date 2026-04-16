@@ -64,8 +64,9 @@ int main() {
             data[i] = dist(rng);
         }
 
-        if (writer.write_data(data, 2, dims)) {
-            std::cout << "Iteration " << iteration << ": Wrote (" << num_triples << ", " << ncols << ") doubles to shared memory" << std::endl;
+        uint16_t data_id = static_cast<uint16_t>(iteration);
+        if (writer.write_data(data, 2, dims, data_id)) {
+            std::cout << "Iteration " << iteration << ": Wrote (" << num_triples << ", " << ncols << ") doubles to shared memory (data_id=" << data_id << ")" << std::endl;
         } else {
             if (!g_running) break;
             std::cerr << "Failed to write data" << std::endl;

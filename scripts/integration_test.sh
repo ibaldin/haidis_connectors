@@ -6,6 +6,11 @@
 #   - the transferred array shape matches the configured dimensions
 #   - all reported Min/Max values are within the expected [-1, 1] range
 #
+# The destination container installs the shmem-reader package from
+# destination/pyproject.toml.  For local development outside Docker you can
+# install it in editable mode with:
+#   pip install -e destination/
+#
 # Usage:  ./scripts/integration_test.sh [RUN_SECONDS]
 #   RUN_SECONDS  seconds to let the containers run (default: 20)
 
