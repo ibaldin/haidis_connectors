@@ -114,7 +114,74 @@ static void test_write_too_large_restores_sem_ack() {
 }
 
 // -------------------------------------------------------------------------
-// Test 6: successful round-trip – write produces a signal the consumer reads
+// Test 6: initialize() is idempotent – calling it twice should not leak
+//         resources or break subsequent writes
+// -------------------------------------------------------------------------
+static void test_init_idempotent() {
+    ShmemWriter w(SHM, SZ, SEM, SEM_ACK);
+    bool first  = w.initialize();
+    bool second = w.initialize();
+    CHECK("init idempotent: first  initialize() succeeds", first);
+    CHECK("init idempotent: second initialize() succeeds", second);
+
+    // Round-trip after re-init to confirm semaphores/shmem are wired up correctly
+    std::atomic<bool> consumer_got_signal{false};
+    std::thread consumer([&]() {
+        sem_t* sem     = sem_open(SEM.c_str(), 0);
+        sem_t* sem_ack = sem_open(SEM_ACK.c_str(), 0);
+        if (sem == SEM_FAILED || sem_ack == SEM_FAILED) {
+            if (sem     != SEM_FAILED) sem_close(sem);
+            if (sem_ack != SEM_FAILED) sem_close(sem_ack);
+            return;
+        }
+        if (sem_wait(sem) == 0) {
+            consumer_got_signal = true;
+            sem_post(sem_ack);
+        }
+        sem_close(sem);
+        sem_close(sem_ack);
+    });
+
+    std::vector<double>   data = {1.0, 2.0};
+    std::vector<uint32_t> dims = {2};
+    bool write_ok = w.write_data(data, 1, dims, 0);
+    consumer.join();
+
+    CHECK("init idempotent: write after re-init succeeds", write_ok);
+    CHECK("init idempotent: consumer received signal after re-init",
+          consumer_got_signal.load());
+}
+
+// -------------------------------------------------------------------------
+// Test 7: when initialize() fails partway through, the destructor must NOT
+//         double-close the fd / double-munmap / double-close the semaphores
+//         it already released on the error path. Detect by forcing a partial
+//         failure (mmap with length=0 → EINVAL on Linux) and then constructing
+//         a fresh writer on the same names: if the destructor of the failed
+//         writer corrupted state, this re-init would misbehave.
+// -------------------------------------------------------------------------
+static void test_init_partial_failure_safe_destruction() {
+    {
+        // size=0 → ftruncate to 0 succeeds, mmap with length=0 fails (EINVAL),
+        // exercising the partial-init cleanup path.
+        ShmemWriter w(SHM, 0, SEM, SEM_ACK);
+        bool ok = w.initialize();
+        CHECK("partial-init: initialize() returns false on mmap failure", !ok);
+        // Destructor runs here. With the fix, sentinels were reset on the
+        // error path, so cleanup() is a true no-op. Without the fix, we'd
+        // double-close fd_ and double-munmap a stale ptr_.
+    }
+    // If the partial-init destructor misbehaved (e.g. closed an unrelated fd
+    // that got recycled), the next ShmemWriter on the same names should still
+    // come up cleanly.
+    ShmemWriter w2(SHM, SZ, SEM, SEM_ACK);
+    bool reinit = w2.initialize();
+    CHECK("partial-init: fresh ShmemWriter on same names still initializes",
+          reinit);
+}
+
+// -------------------------------------------------------------------------
+// Test 8: successful round-trip – write produces a signal the consumer reads
 // -------------------------------------------------------------------------
 static void test_write_roundtrip() {
     ShmemWriter w(SHM, SZ, SEM, SEM_ACK);
@@ -159,6 +226,12 @@ int main() {
     std::cout << std::endl;
 
     test_write_too_large_restores_sem_ack();
+    std::cout << std::endl;
+
+    test_init_idempotent();
+    std::cout << std::endl;
+
+    test_init_partial_failure_safe_destruction();
     std::cout << std::endl;
 
     test_write_roundtrip();

@@ -16,6 +16,11 @@ ShmemWriter::~ShmemWriter() {
 }
 
 bool ShmemWriter::initialize() {
+    // Idempotent: release any prior resources before re-initializing
+    if (initialized_ || fd_ != -1 || ptr_ != nullptr || sem_ != SEM_FAILED || sem_ack_ != SEM_FAILED) {
+        cleanup();
+    }
+
     // Unlink any existing semaphores to ensure clean state
     // (Ignore errors - they may not exist)
     sem_unlink(sem_name_.c_str());
@@ -32,6 +37,7 @@ bool ShmemWriter::initialize() {
     if (ftruncate(fd_, shmem_size_) == -1) {
         std::cerr << "Failed to set shared memory size: " << strerror(errno) << std::endl;
         close(fd_);
+        fd_ = -1;
         shm_unlink(shmem_name_.c_str());
         return false;
     }
@@ -40,17 +46,23 @@ bool ShmemWriter::initialize() {
     ptr_ = mmap(nullptr, shmem_size_, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);
     if (ptr_ == MAP_FAILED) {
         std::cerr << "Failed to map shared memory: " << strerror(errno) << std::endl;
+        ptr_ = nullptr;
         close(fd_);
+        fd_ = -1;
         shm_unlink(shmem_name_.c_str());
         return false;
     }
+
+    // mmap holds its own reference; the fd is no longer needed
+    close(fd_);
+    fd_ = -1;
 
     // Create data-ready semaphore (initial value 0 - no data ready)
     sem_ = sem_open(sem_name_.c_str(), O_CREAT, 0666, 0);
     if (sem_ == SEM_FAILED) {
         std::cerr << "Failed to create semaphore: " << strerror(errno) << std::endl;
         munmap(ptr_, shmem_size_);
-        close(fd_);
+        ptr_ = nullptr;
         shm_unlink(shmem_name_.c_str());
         return false;
     }
@@ -60,9 +72,10 @@ bool ShmemWriter::initialize() {
     if (sem_ack_ == SEM_FAILED) {
         std::cerr << "Failed to create ack semaphore: " << strerror(errno) << std::endl;
         sem_close(sem_);
+        sem_ = SEM_FAILED;
         sem_unlink(sem_name_.c_str());
         munmap(ptr_, shmem_size_);
-        close(fd_);
+        ptr_ = nullptr;
         shm_unlink(shmem_name_.c_str());
         return false;
     }
