@@ -1,6 +1,9 @@
 #include "shmem_writer.hpp"
 #include <iostream>
 #include <cstring>
+#include <cerrno>
+#include <chrono>
+#include <thread>
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -110,11 +113,24 @@ bool ShmemWriter::write_data(const std::vector<double>& data, uint32_t ndim, con
         return false;
     }
 
-    // Wait until the reader has consumed the previous data
-    if (sem_wait(sem_ack_) == -1) {
-        if (errno == EINTR) return false;  // interrupted by signal
-        std::cerr << "Failed to wait on ack semaphore: " << strerror(errno) << std::endl;
-        return false;
+    // Wait until the reader has consumed the previous data, with a timeout.
+    // sem_timedwait is not available on macOS, so we poll with sem_trywait.
+    {
+        auto deadline = std::chrono::steady_clock::now()
+                        + std::chrono::seconds(WRITE_TIMEOUT_SEC);
+        while (true) {
+            if (sem_trywait(sem_ack_) == 0) break;
+            if (errno == EINTR)  return false;
+            if (errno != EAGAIN) {
+                std::cerr << "Failed to wait on ack semaphore: " << strerror(errno) << std::endl;
+                return false;
+            }
+            if (std::chrono::steady_clock::now() >= deadline) {
+                errno = ETIMEDOUT;
+                return false;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
     }
 
     size_t data_size = data.size() * sizeof(double);

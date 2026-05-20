@@ -8,6 +8,9 @@
 
 class ShmemWriter {
 public:
+    // Maximum seconds write_data will wait for the reader to free the buffer.
+    static constexpr int WRITE_TIMEOUT_SEC = 5;
+
     ShmemWriter(const std::string& shmem_name, size_t size,
                 const std::string& sem_name, const std::string& sem_ack_name);
     ~ShmemWriter();
