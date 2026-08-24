@@ -4,7 +4,7 @@ import sys
 import time
 import mmap
 import struct
-from posix_ipc import SharedMemory, Semaphore, ExistentialError
+from posix_ipc import SharedMemory, Semaphore, ExistentialError, BusyError
 import numpy as np
 
 
@@ -51,6 +51,25 @@ class ShmemReader:
                     time.sleep(0.5)
 
             print(f"Semaphores opened: {self.sem_name}, {self.sem_ack_name}")
+
+            # Drain any stale data-ready signals left by a prior run or an
+            # eager writer that posted before the reader was ready.  Each
+            # drained signal must be matched with an ack so the writer can
+            # proceed.
+            drained = 0
+            while True:
+                try:
+                    self.sem.acquire(timeout=0)
+                    drained += 1
+                    self.sem_ack.release()
+                except BusyError:
+                    break
+            if drained > 0:
+                print(
+                    f"Drained {drained} stale signal(s) from {self.sem_name} (acks sent)",
+                    file=sys.stderr,
+                )
+
             return True
         except Exception as e:
             print(f"Failed to initialize: {e}", file=sys.stderr)
